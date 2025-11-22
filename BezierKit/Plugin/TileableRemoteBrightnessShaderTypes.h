@@ -20,7 +20,7 @@ typedef enum BrightnessTextureIndex {
 } BrightnessTextureIndex;
 
 typedef enum BrightnessFragmentIndex {
-    BFI_Brightness  = 0
+    BFI_Opacity  = 0
 } BrightnessFragmentIndex;
 
 typedef struct Vertex2D {

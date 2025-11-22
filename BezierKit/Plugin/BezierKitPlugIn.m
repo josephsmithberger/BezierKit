@@ -9,6 +9,52 @@
 #import <IOSurface/IOSurfaceObjC.h>
 #import "TileableRemoteBrightnessShaderTypes.h"
 #import "MetalDeviceCache.h"
+#import <math.h>
+
+// Parameter IDs
+enum {
+    kParamID_Progress = 1,
+    kParamID_EasingType,
+    kParamID_StartPosX,
+    kParamID_StartPosY,
+    kParamID_EndPosX,
+    kParamID_EndPosY,
+    kParamID_StartScale,
+    kParamID_EndScale,
+    kParamID_StartRotation,
+    kParamID_EndRotation,
+    kParamID_StartOpacity,
+    kParamID_EndOpacity
+};
+
+// Easing Types
+enum {
+    kEasingType_Linear = 0,
+    kEasingType_EaseInQuad,
+    kEasingType_EaseOutQuad,
+    kEasingType_EaseInOutQuad,
+    kEasingType_EaseInCubic,
+    kEasingType_EaseOutCubic,
+    kEasingType_EaseInOutCubic,
+    kEasingType_EaseInBack,
+    kEasingType_EaseOutBack,
+    kEasingType_EaseInOutBack,
+    kEasingType_EaseInBounce,
+    kEasingType_EaseOutBounce,
+    kEasingType_EaseInOutBounce
+};
+
+typedef struct {
+    double progress;
+    int easingType;
+    double startPosX, startPosY;
+    double endPosX, endPosY;
+    double startScale, endScale;
+    double startRotation, endRotation;
+    double startOpacity, endOpacity;
+} PluginState;
+
+static double applyEasing(int type, double t);
 
 @implementation BezierKitPlugIn
 
@@ -72,26 +118,26 @@
         return NO;
     }
     
-    if (![paramAPI addFloatSliderWithName:@"Brightness"
-                              parameterID:1
-                             defaultValue:1.0
-                             parameterMin:0.0
-                             parameterMax:100.0
-                                sliderMin:0.0
-                                sliderMax:10.0
-                                    delta:0.1
-                           parameterFlags:kFxParameterFlag_DEFAULT])
-    {
-        NSDictionary*   userInfo    = @{
-                                        NSLocalizedDescriptionKey : @"Unable to add brightness slider"
-                                        };
-        if (error != NULL)
-            *error = [NSError errorWithDomain:FxPlugErrorDomain
-                                         code:kFxError_InvalidParameter
-                                     userInfo:userInfo];
-        
-        return NO;
-    }
+    [paramAPI addFloatSliderWithName:@"Progress" parameterID:kParamID_Progress defaultValue:0.0 parameterMin:0.0 parameterMax:100.0 sliderMin:0.0 sliderMax:100.0 delta:0.1 parameterFlags:kFxParameterFlag_DEFAULT];
+
+    NSArray *menuEntries = @[@"Linear", @"Ease In Quad", @"Ease Out Quad", @"Ease In Out Quad", @"Ease In Cubic", @"Ease Out Cubic", @"Ease In Out Cubic", @"Ease In Back", @"Ease Out Back", @"Ease In Out Back", @"Ease In Bounce", @"Ease Out Bounce", @"Ease In Out Bounce"];
+    [paramAPI addPopupMenuWithName:@"Easing Type" parameterID:kParamID_EasingType defaultValue:kEasingType_EaseInOutQuad menuEntries:menuEntries parameterFlags:kFxParameterFlag_DEFAULT];
+
+    [paramAPI startParameterSubGroup:@"Start Transform" parameterID:100 parameterFlags:kFxParameterFlag_DEFAULT];
+    [paramAPI addFloatSliderWithName:@"Start Position X" parameterID:kParamID_StartPosX defaultValue:0.0 parameterMin:-4000.0 parameterMax:4000.0 sliderMin:-1000.0 sliderMax:1000.0 delta:1.0 parameterFlags:kFxParameterFlag_DEFAULT];
+    [paramAPI addFloatSliderWithName:@"Start Position Y" parameterID:kParamID_StartPosY defaultValue:0.0 parameterMin:-4000.0 parameterMax:4000.0 sliderMin:-1000.0 sliderMax:1000.0 delta:1.0 parameterFlags:kFxParameterFlag_DEFAULT];
+    [paramAPI addFloatSliderWithName:@"Start Scale" parameterID:kParamID_StartScale defaultValue:100.0 parameterMin:0.0 parameterMax:1000.0 sliderMin:0.0 sliderMax:200.0 delta:1.0 parameterFlags:kFxParameterFlag_DEFAULT];
+    [paramAPI addFloatSliderWithName:@"Start Rotation" parameterID:kParamID_StartRotation defaultValue:0.0 parameterMin:-3600.0 parameterMax:3600.0 sliderMin:-180.0 sliderMax:180.0 delta:1.0 parameterFlags:kFxParameterFlag_DEFAULT];
+    [paramAPI addFloatSliderWithName:@"Start Opacity" parameterID:kParamID_StartOpacity defaultValue:100.0 parameterMin:0.0 parameterMax:100.0 sliderMin:0.0 sliderMax:100.0 delta:1.0 parameterFlags:kFxParameterFlag_DEFAULT];
+    [paramAPI endParameterSubGroup];
+
+    [paramAPI startParameterSubGroup:@"End Transform" parameterID:200 parameterFlags:kFxParameterFlag_DEFAULT];
+    [paramAPI addFloatSliderWithName:@"End Position X" parameterID:kParamID_EndPosX defaultValue:0.0 parameterMin:-4000.0 parameterMax:4000.0 sliderMin:-1000.0 sliderMax:1000.0 delta:1.0 parameterFlags:kFxParameterFlag_DEFAULT];
+    [paramAPI addFloatSliderWithName:@"End Position Y" parameterID:kParamID_EndPosY defaultValue:0.0 parameterMin:-4000.0 parameterMax:4000.0 sliderMin:-1000.0 sliderMax:1000.0 delta:1.0 parameterFlags:kFxParameterFlag_DEFAULT];
+    [paramAPI addFloatSliderWithName:@"End Scale" parameterID:kParamID_EndScale defaultValue:100.0 parameterMin:0.0 parameterMax:1000.0 sliderMin:0.0 sliderMax:200.0 delta:1.0 parameterFlags:kFxParameterFlag_DEFAULT];
+    [paramAPI addFloatSliderWithName:@"End Rotation" parameterID:kParamID_EndRotation defaultValue:0.0 parameterMin:-3600.0 parameterMax:3600.0 sliderMin:-180.0 sliderMax:180.0 delta:1.0 parameterFlags:kFxParameterFlag_DEFAULT];
+    [paramAPI addFloatSliderWithName:@"End Opacity" parameterID:kParamID_EndOpacity defaultValue:100.0 parameterMin:0.0 parameterMax:100.0 sliderMin:0.0 sliderMax:100.0 delta:1.0 parameterFlags:kFxParameterFlag_DEFAULT];
+    [paramAPI endParameterSubGroup];
     
     return YES;
 }
@@ -119,18 +165,28 @@
     id<FxParameterRetrievalAPI_v6>  paramGetAPI = [_apiManager apiForProtocol:@protocol(FxParameterRetrievalAPI_v6)];
     if (paramGetAPI != nil)
     {
-        double  brightness  = 1.0;
-        [paramGetAPI getFloatValue:&brightness
-                     fromParameter:1
-                            atTime:renderTime];
+        PluginState state;
+        [paramGetAPI getFloatValue:&state.progress fromParameter:kParamID_Progress atTime:renderTime];
+        int easingTypeInt;
+        [paramGetAPI getIntValue:&easingTypeInt fromParameter:kParamID_EasingType atTime:renderTime];
+        state.easingType = easingTypeInt;
         
-        *pluginState = [NSData dataWithBytes:&brightness
-                                      length:sizeof(brightness)];
+        [paramGetAPI getFloatValue:&state.startPosX fromParameter:kParamID_StartPosX atTime:renderTime];
+        [paramGetAPI getFloatValue:&state.startPosY fromParameter:kParamID_StartPosY atTime:renderTime];
+        [paramGetAPI getFloatValue:&state.endPosX fromParameter:kParamID_EndPosX atTime:renderTime];
+        [paramGetAPI getFloatValue:&state.endPosY fromParameter:kParamID_EndPosY atTime:renderTime];
         
-        if (*pluginState != nil)
-        {
-            succeeded = YES;
-        }
+        [paramGetAPI getFloatValue:&state.startScale fromParameter:kParamID_StartScale atTime:renderTime];
+        [paramGetAPI getFloatValue:&state.endScale fromParameter:kParamID_EndScale atTime:renderTime];
+        
+        [paramGetAPI getFloatValue:&state.startRotation fromParameter:kParamID_StartRotation atTime:renderTime];
+        [paramGetAPI getFloatValue:&state.endRotation fromParameter:kParamID_EndRotation atTime:renderTime];
+        
+        [paramGetAPI getFloatValue:&state.startOpacity fromParameter:kParamID_StartOpacity atTime:renderTime];
+        [paramGetAPI getFloatValue:&state.endOpacity fromParameter:kParamID_EndOpacity atTime:renderTime];
+        
+        *pluginState = [NSData dataWithBytes:&state length:sizeof(state)];
+        if (*pluginState != nil) succeeded = YES;
     }
     else
     {
@@ -194,10 +250,121 @@
                 atTime:(CMTime)renderTime
                  error:(NSError * _Nullable *)outError
 {
-    // Since this is a color-only filter, the input tile will be the same size as the output tile
-    *sourceTileRect = destinationTileRect;
+    if (pluginState == nil) return NO;
+    
+    PluginState state;
+    [pluginState getBytes:&state length:sizeof(state)];
+    
+    double t = state.progress / 100.0;
+    double easedT = applyEasing(state.easingType, t);
+    
+    double currentPosX = state.startPosX + (state.endPosX - state.startPosX) * easedT;
+    double currentPosY = state.startPosY + (state.endPosY - state.startPosY) * easedT;
+    double currentScale = state.startScale + (state.endScale - state.startScale) * easedT;
+    double currentRotation = state.startRotation + (state.endRotation - state.startRotation) * easedT;
+    
+    // Inverse transform:
+    // v = ScaleInv(RotateInv(v' - Pos))
+    
+    double scaleFactor = currentScale / 100.0;
+    if (scaleFactor < 0.001) scaleFactor = 0.001;
+    double invScale = 1.0 / scaleFactor;
+    
+    // In renderDestinationImage, we used rotationRad = -currentRotation * ...
+    // So we rotated by -currentRotation.
+    // Inverse rotation is +currentRotation.
+    double rotRad = currentRotation * M_PI / 180.0;
+    
+    double cosR = cos(rotRad);
+    double sinR = sin(rotRad);
+    
+    // Destination corners
+    double l = destinationTileRect.left;
+    double r = destinationTileRect.right;
+    double b = destinationTileRect.bottom;
+    double top = destinationTileRect.top;
+    
+    struct Point { double x, y; };
+    struct Point corners[4] = { {l, b}, {r, b}, {r, top}, {l, top} };
+    
+    double minX = 1e15, minY = 1e15, maxX = -1e15, maxY = -1e15;
+    
+    for (int i=0; i<4; i++) {
+        // Translate
+        double x = corners[i].x - currentPosX;
+        double y = corners[i].y - currentPosY;
+        
+        // Rotate
+        double rx = x * cosR - y * sinR;
+        double ry = x * sinR + y * cosR;
+        
+        // Scale
+        double sx = rx * invScale;
+        double sy = ry * invScale;
+        
+        if (sx < minX) minX = sx;
+        if (sx > maxX) maxX = sx;
+        if (sy < minY) minY = sy;
+        if (sy > maxY) maxY = sy;
+    }
+    
+    sourceTileRect->left = (int)floor(minX);
+    sourceTileRect->right = (int)ceil(maxX);
+    sourceTileRect->bottom = (int)floor(minY);
+    sourceTileRect->top = (int)ceil(maxY);
     
     return YES;
+}
+
+static double applyEasing(int type, double t) {
+    if (t <= 0.0) return 0.0;
+    if (t >= 1.0) return 1.0;
+    
+    switch (type) {
+        case kEasingType_Linear: return t;
+        case kEasingType_EaseInQuad: return t * t;
+        case kEasingType_EaseOutQuad: return t * (2 - t);
+        case kEasingType_EaseInOutQuad: return t < .5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+        case kEasingType_EaseInCubic: return t * t * t;
+        case kEasingType_EaseOutCubic: t = t - 1; return t * t * t + 1;
+        case kEasingType_EaseInOutCubic: return t < .5 ? 4 * t * t * t : (t - 1) * (2 * t - 2) * (2 * t - 2) + 1;
+        case kEasingType_EaseInBack: {
+            double s = 1.70158;
+            return t * t * ((s + 1) * t - s);
+        }
+        case kEasingType_EaseOutBack: {
+            double s = 1.70158;
+            t = t - 1;
+            return t * t * ((s + 1) * t + s) + 1;
+        }
+        case kEasingType_EaseInOutBack: {
+            double s = 1.70158 * 1.525;
+            t = t * 2;
+            if (t < 1) return 0.5 * (t * t * ((s + 1) * t - s));
+            t = t - 2;
+            return 0.5 * (t * t * ((s + 1) * t + s) + 2);
+        }
+        case kEasingType_EaseInBounce: return 1 - applyEasing(kEasingType_EaseOutBounce, 1 - t);
+        case kEasingType_EaseOutBounce: {
+            if (t < (1/2.75)) {
+                return (7.5625 * t * t);
+            } else if (t < (2/2.75)) {
+                t = t - (1.5/2.75);
+                return (7.5625 * t * t + 0.75);
+            } else if (t < (2.5/2.75)) {
+                t = t - (2.25/2.75);
+                return (7.5625 * t * t + 0.9375);
+            } else {
+                t = t - (2.625/2.75);
+                return (7.5625 * t * t + 0.984375);
+            }
+        }
+        case kEasingType_EaseInOutBounce: {
+            if (t < 0.5) return applyEasing(kEasingType_EaseInBounce, t * 2) * 0.5;
+            return applyEasing(kEasingType_EaseOutBounce, t * 2 - 1) * 0.5 + 0.5;
+        }
+    }
+    return t;
 }
 
 //---------------------------------------------------------
@@ -229,13 +396,21 @@
         return NO;
     }
     
-    // This is where you would access parameter values and other info about the source tile
-    // from the pluginState.
-    double  brightness = 0.0;
-    [pluginState getBytes:&brightness
-                   length:sizeof(brightness)];
+    PluginState state;
+    [pluginState getBytes:&state length:sizeof(state)];
     
-    // Set up the renderer, in this case we are using Metal.
+    double t = state.progress / 100.0;
+    double easedT = applyEasing(state.easingType, t);
+    
+    double currentPosX = state.startPosX + (state.endPosX - state.startPosX) * easedT;
+    double currentPosY = state.startPosY + (state.endPosY - state.startPosY) * easedT;
+    double currentScale = state.startScale + (state.endScale - state.startScale) * easedT;
+    double currentRotation = state.startRotation + (state.endRotation - state.startRotation) * easedT;
+    double currentOpacity = state.startOpacity + (state.endOpacity - state.startOpacity) * easedT;
+    
+    double rotationRad = -currentRotation * M_PI / 180.0; // Negative to match expected rotation direction usually
+    double scaleFactor = currentScale / 100.0;
+    float opacityFactor = (float)(currentOpacity / 100.0);
     
     MetalDeviceCache*  deviceCache     = [MetalDeviceCache deviceCache];
     MTLPixelFormat     pixelFormat     = [MetalDeviceCache MTLPixelFormatForImageTile:destinationImage];
@@ -255,7 +430,7 @@
     
     MTLRenderPassColorAttachmentDescriptor* colorAttachmentDescriptor   = [[MTLRenderPassColorAttachmentDescriptor alloc] init];
     colorAttachmentDescriptor.texture = outputTexture;
-    colorAttachmentDescriptor.clearColor = MTLClearColorMake(1.0, 0.5, 0.0, 1.0);
+    colorAttachmentDescriptor.clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 0.0); // Clear to transparent
     colorAttachmentDescriptor.loadAction = MTLLoadActionClear;
     MTLRenderPassDescriptor*    renderPassDescriptor    = [MTLRenderPassDescriptor renderPassDescriptor];
     renderPassDescriptor.colorAttachments [ 0 ] = colorAttachmentDescriptor;
@@ -264,12 +439,34 @@
     // Rendering
     float   outputWidth     = (float)(destinationImage.tilePixelBounds.right - destinationImage.tilePixelBounds.left);
     float   outputHeight    = (float)(destinationImage.tilePixelBounds.top - destinationImage.tilePixelBounds.bottom);
-    Vertex2D    vertices[]  = {
-        { {  outputWidth / 2.0, -outputHeight / 2.0 }, { 1.0, 1.0 } },
-        { { -outputWidth / 2.0, -outputHeight / 2.0 }, { 0.0, 1.0 } },
-        { {  outputWidth / 2.0,  outputHeight / 2.0 }, { 1.0, 0.0 } },
-        { { -outputWidth / 2.0,  outputHeight / 2.0 }, { 0.0, 0.0 } }
+    
+    float halfW = outputWidth / 2.0;
+    float halfH = outputHeight / 2.0;
+    
+    float cosR = cos(rotationRad);
+    float sinR = sin(rotationRad);
+    
+    vector_float2 (^transform)(float, float) = ^(float x, float y) {
+        float sx = x * scaleFactor;
+        float sy = y * scaleFactor;
+        float rx = sx * cosR - sy * sinR;
+        float ry = sx * sinR + sy * cosR;
+        return (vector_float2){ (float)(rx + currentPosX), (float)(ry + currentPosY) };
     };
+    
+    Vertex2D    vertices[4];
+    // BR
+    vertices[0].position = transform(halfW, -halfH);
+    vertices[0].textureCoordinate = (vector_float2){ 1.0, 1.0 };
+    // BL
+    vertices[1].position = transform(-halfW, -halfH);
+    vertices[1].textureCoordinate = (vector_float2){ 0.0, 1.0 };
+    // TR
+    vertices[2].position = transform(halfW, halfH);
+    vertices[2].textureCoordinate = (vector_float2){ 1.0, 0.0 };
+    // TL
+    vertices[3].position = transform(-halfW, halfH);
+    vertices[3].textureCoordinate = (vector_float2){ 0.0, 0.0 };
     
     MTLViewport viewport    = {
         0, 0, outputWidth, outputHeight, -1.0, 1.0
@@ -295,10 +492,9 @@
     [commandEncoder setFragmentTexture:inputTexture
                                atIndex:BTI_InputImage];
     
-    float   fragmentBrightness = (float)brightness;
-    [commandEncoder setFragmentBytes:&fragmentBrightness
-                              length:sizeof(fragmentBrightness)
-                             atIndex:BFI_Brightness];
+    [commandEncoder setFragmentBytes:&opacityFactor
+                              length:sizeof(opacityFactor)
+                             atIndex:BFI_Opacity];
     
     [commandEncoder drawPrimitives:MTLPrimitiveTypeTriangleStrip
                        vertexStart:0

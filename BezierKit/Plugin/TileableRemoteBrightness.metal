@@ -68,15 +68,15 @@ vertexShader(uint vertexID [[vertex_id]],
 // Fragment function
 fragment float4 fragmentShader(RasterizerData in [[stage_in]],
                                texture2d<half> colorTexture [[ texture(BTI_InputImage) ]],
-                               constant float* brightness [[ buffer(BFI_Brightness) ]])
+                               constant float* opacity [[ buffer(BFI_Opacity) ]])
 {
     constexpr sampler textureSampler (mag_filter::linear,
                                       min_filter::linear);
     
     // Sample the texture to obtain a color
     half4 colorSample = colorTexture.sample(textureSampler, in.textureCoordinate);
-    const half hBrightness = static_cast<half>(*brightness);
-    colorSample.rgb = colorSample.rgb * hBrightness;
+    const half hOpacity = static_cast<half>(*opacity);
+    colorSample = colorSample * hOpacity;
     
     // We return the color of the texture
     return float4(colorSample);
