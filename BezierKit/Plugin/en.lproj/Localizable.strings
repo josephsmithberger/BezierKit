@@ -1,0 +1,4 @@
+/* Localized versions of Info.plist keys */
+
+"BezierKit::FxPlug Description" = "A helpful description of\nwhat this plugin does.";
+
