@@ -9,9 +9,13 @@ If you need a stable, professional-grade solution, you should absolutely check o
 
 Made by **Joseph Smithberger**.
 
+<img width="400" height="377" alt="screenshot" src="https://github.com/user-attachments/assets/1c1517d9-5266-41bd-b19b-fe5370f131ec" />
+
 ## Overview
 
 BezierKit lets you apply easing curves to common transform properties (Position, Scale, Rotation, Opacity) inside Final Cut Pro and Motion. It includes easing equations like Quad, Cubic, Back, and Bounce. 
+
+![demo](https://github.com/user-attachments/assets/b16c5793-1e13-464c-8094-2e8683a2d7b6)
 
 ## Features
 
