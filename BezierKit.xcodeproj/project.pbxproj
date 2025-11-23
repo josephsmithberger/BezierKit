@@ -14,6 +14,8 @@
 		BC2C644C2ED160C900EC4E0B /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BC2C644B2ED160C900EC4E0B /* Accelerate.framework */; };
 		BC2C644E2ED160C900EC4E0B /* PluginManager.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BC2C644D2ED160C900EC4E0B /* PluginManager.framework */; };
 		BC2C64502ED160C900EC4E0B /* FxPlug.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BC2C644F2ED160C900EC4E0B /* FxPlug.framework */; };
+		BC53761C2ED28361006C5047 /* BezierKit.icon in Resources */ = {isa = PBXBuildFile; fileRef = BC53761B2ED28361006C5047 /* BezierKit.icon */; };
+		BC53761D2ED28361006C5047 /* BezierKit.icon in Resources */ = {isa = PBXBuildFile; fileRef = BC53761B2ED28361006C5047 /* BezierKit.icon */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -56,6 +58,7 @@
 		BC2C644B2ED160C900EC4E0B /* Accelerate.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Accelerate.framework; path = System/Library/Frameworks/Accelerate.framework; sourceTree = SDKROOT; };
 		BC2C644D2ED160C900EC4E0B /* PluginManager.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = PluginManager.framework; path = Library/Frameworks/../../../../../../Library/Developer/Frameworks/PluginManager.framework; sourceTree = DEVELOPER_DIR; };
 		BC2C644F2ED160C900EC4E0B /* FxPlug.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = FxPlug.framework; path = Library/Frameworks/../../../../../../Library/Developer/Frameworks/FxPlug.framework; sourceTree = DEVELOPER_DIR; };
+		BC53761B2ED28361006C5047 /* BezierKit.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = BezierKit.icon; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -145,6 +148,7 @@
 		BC2C643A2ED160C900EC4E0B /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				BC53761B2ED28361006C5047 /* BezierKit.icon */,
 				BC2C643B2ED160C900EC4E0B /* Cocoa.framework */,
 				BC2C64472ED160C900EC4E0B /* Foundation.framework */,
 				BC2C64492ED160C900EC4E0B /* AppKit.framework */,
@@ -249,6 +253,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				BC53761D2ED28361006C5047 /* BezierKit.icon in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -256,6 +261,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				BC53761C2ED28361006C5047 /* BezierKit.icon in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -374,11 +380,13 @@
 		BC2C647E2ED160C900EC4E0B /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_ENTITLEMENTS = "BezierKit/Wrapper Application/SandboxEntitlements.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				ENABLE_HARDENED_RUNTIME = NO;
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
 				INFOPLIST_FILE = "BezierKit/Wrapper Application/Info.plist";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				PRODUCT_BUNDLE_IDENTIFIER = "$(PRODUCT_NAME:rfc1034identifier)";
 				PRODUCT_NAME = BezierKit;
 				SWIFT_OBJC_BRIDGING_HEADER = "BezierKit/Wrapper Application/Wrapper Application-Bridging-Header.h";
@@ -388,11 +396,13 @@
 		BC2C647F2ED160C900EC4E0B /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_ENTITLEMENTS = "BezierKit/Wrapper Application/SandboxEntitlements.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				ENABLE_HARDENED_RUNTIME = NO;
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
 				INFOPLIST_FILE = "BezierKit/Wrapper Application/Info.plist";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				PRODUCT_BUNDLE_IDENTIFIER = "$(PRODUCT_NAME:rfc1034identifier)";
 				PRODUCT_NAME = BezierKit;
 				SWIFT_OBJC_BRIDGING_HEADER = "BezierKit/Wrapper Application/Wrapper Application-Bridging-Header.h";
