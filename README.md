@@ -1,21 +1,25 @@
 # BezierKit
+
 <img width="1000" height="400" alt="title_card" src="https://github.com/user-attachments/assets/38e90774-75ff-4cce-8027-4bfe81acd865" />
 
-**BezierKit** is a free, open-source plugin for Apple Motion and Final Cut Pro that brings advanced easing functions to your animations. It is designed to be a free alternative to **axymotion EasyEase** for Final Cut Pro.
+**BezierKit** is a free, open-source plugin for Apple Motion and Final Cut Pro that adds custom easing functions to your animations. It was created mostly for fun, learning, and to give people a no-cost option — but it is *not* as polished, reliable, or well-supported as **axymotion EasyEase**.
 
-Created by **Joseph Smithberger**.
+If you need a stable, professional-grade solution, you should absolutely check out and consider purchasing their product:
+[https://www.axymotion.com](https://www.axymotion.com)
+
+Made by **Joseph Smithberger**.
 
 ## Overview
 
-BezierKit allows you to apply complex easing curves to transform properties (Position, Scale, Rotation, Opacity) directly within Final Cut Pro and Motion. Instead of relying on standard keyframe interpolation, BezierKit provides a dedicated set of easing equations—including Quad, Cubic, Back, and Bounce—to create smooth, professional-grade motion graphics.
+BezierKit lets you apply easing curves to common transform properties (Position, Scale, Rotation, Opacity) inside Final Cut Pro and Motion. It includes easing equations like Quad, Cubic, Back, and Bounce. 
 
 ## Features
 
--   **Advanced Easing:** Supports multiple easing types such as Linear, Ease In/Out/InOut (Quad, Cubic, Back, Bounce).
--   **Transform Controls:** Animate Position, Scale, Rotation, and Opacity with precision.
-
+* **Basic Easing Functions:** Linear, Ease In/Out/InOut (Quad, Cubic, Back, Bounce).
+* **Transform Controls:** Works with Position, Scale, Rotation, and Opacity.
 
 ## More Information
 
-For more projects and information, visit my website:
+For more projects and info, visit:
 [https://josephsmithberger.com](https://josephsmithberger.com)
+
