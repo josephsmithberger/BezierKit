@@ -513,7 +513,7 @@ static double applyEasing(int type, double t) {
         float sy = y * scaleFactor;
         float rx = sx * cosR - sy * sinR;
         float ry = sx * sinR + sy * cosR;
-        return (vector_float2){ (float)(rx + currentPosX), (float)(ry + currentPosY) };
+        return (vector_float2){ (float)rx, (float)ry };
     };
     
     Vertex2D    vertices[4];
