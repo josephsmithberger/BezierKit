@@ -1,4 +1,5 @@
 # BezierKit
+<img width="1000" height="400" alt="title_card" src="https://github.com/user-attachments/assets/38e90774-75ff-4cce-8027-4bfe81acd865" />
 
 **BezierKit** is a free, open-source plugin for Apple Motion and Final Cut Pro that brings advanced easing functions to your animations. It is designed to be a free alternative to **axymotion EasyEase** for Final Cut Pro.
 
