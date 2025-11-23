@@ -166,6 +166,7 @@ static double applyEasing(int type, double t);
     if (paramGetAPI != nil)
     {
         PluginState state;
+        memset(&state, 0, sizeof(state));
         [paramGetAPI getFloatValue:&state.progress fromParameter:kParamID_Progress atTime:renderTime];
         int easingTypeInt;
         [paramGetAPI getIntValue:&easingTypeInt fromParameter:kParamID_EasingType atTime:renderTime];
@@ -226,12 +227,73 @@ static double applyEasing(int type, double t);
         return NO;
     }
     
-    // In the case of a filter that only changed RGB values,
-    // the output rect is the same as the input rect.
-    *destinationImageRect = sourceImages [ 0 ].imagePixelBounds;
+    if (pluginState == nil) return NO;
+    
+    PluginState state;
+    [pluginState getBytes:&state length:sizeof(state)];
+    
+    double t = state.progress / 100.0;
+    double easedT = applyEasing(state.easingType, t);
+    
+    double currentPosX = state.startPosX + (state.endPosX - state.startPosX) * easedT;
+    double currentPosY = state.startPosY + (state.endPosY - state.startPosY) * easedT;
+    double currentScale = state.startScale + (state.endScale - state.startScale) * easedT;
+    double currentRotation = state.startRotation + (state.endRotation - state.startRotation) * easedT;
+    
+    double rotationRad = -currentRotation * M_PI / 180.0;
+    double scaleFactor = currentScale / 100.0;
+    
+    double cosR = cos(rotationRad);
+    double sinR = sin(rotationRad);
+    
+    FxRect srcRect = sourceImages[0].imagePixelBounds;
+    double width = srcRect.right - srcRect.left;
+    double height = srcRect.top - srcRect.bottom;
+    double cx = srcRect.left + width / 2.0;
+    double cy = srcRect.bottom + height / 2.0;
+    
+    double halfW = width / 2.0;
+    double halfH = height / 2.0;
+    
+    // 4 corners relative to center
+    struct Point { double x, y; };
+    struct Point corners[4] = {
+        {-halfW, -halfH},
+        {halfW, -halfH},
+        {halfW, halfH},
+        {-halfW, halfH}
+    };
+    
+    double minX = 1e15, minY = 1e15, maxX = -1e15, maxY = -1e15;
+    
+    for (int i=0; i<4; i++) {
+        double x = corners[i].x;
+        double y = corners[i].y;
+        
+        // Scale
+        double sx = x * scaleFactor;
+        double sy = y * scaleFactor;
+        
+        // Rotate
+        double rx = sx * cosR - sy * sinR;
+        double ry = sx * sinR + sy * cosR;
+        
+        // Translate (add currentPos) and add back center
+        double finalX = rx + currentPosX + cx;
+        double finalY = ry + currentPosY + cy;
+        
+        if (finalX < minX) minX = finalX;
+        if (finalX > maxX) maxX = finalX;
+        if (finalY < minY) minY = finalY;
+        if (finalY > maxY) maxY = finalY;
+    }
+    
+    destinationImageRect->left = (int)floor(minX);
+    destinationImageRect->right = (int)ceil(maxX);
+    destinationImageRect->bottom = (int)floor(minY);
+    destinationImageRect->top = (int)ceil(maxY);
     
     return YES;
-    
 }
 
 //---------------------------------------------------------
@@ -501,13 +563,14 @@ static double applyEasing(int type, double t) {
                        vertexCount:4];
     
     [commandEncoder endEncoding];
+    
+    [commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> buffer) {
+        [deviceCache returnCommandQueueToCache:commandQueue];
+    }];
+    
     [commandBuffer commit];
     
-    [commandBuffer waitUntilCompleted];
-    
     [colorAttachmentDescriptor release];
-    
-    [deviceCache returnCommandQueueToCache:commandQueue];
     
     return YES;
     

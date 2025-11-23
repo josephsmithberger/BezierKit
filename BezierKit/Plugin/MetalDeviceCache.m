@@ -7,7 +7,7 @@
 
 #import "MetalDeviceCache.h"
 
-const NSUInteger    kMaxCommandQueues   = 5;
+const NSUInteger    kInitialCommandQueues   = 5;
 static NSString*    kKey_InUse          = @"InUse";
 static NSString*    kKey_CommandQueue   = @"CommandQueue";
 
@@ -40,8 +40,8 @@ static MetalDeviceCache*   gDeviceCache    = nil;
     {
         _gpuDevice = [device retain];
         
-        _commandQueueCache = [[NSMutableArray alloc] initWithCapacity:kMaxCommandQueues];
-        for (NSUInteger i = 0; (_commandQueueCache != nil) && (i < kMaxCommandQueues); i++)
+        _commandQueueCache = [[NSMutableArray alloc] initWithCapacity:kInitialCommandQueues];
+        for (NSUInteger i = 0; (_commandQueueCache != nil) && (i < kInitialCommandQueues); i++)
         {
             NSMutableDictionary*   commandDict = [NSMutableDictionary dictionary];
             [commandDict setObject:[NSNumber numberWithBool:NO]
@@ -111,7 +111,8 @@ static MetalDeviceCache*   gDeviceCache    = nil;
     
     [_commandQueueCacheLock lock];
     NSUInteger  index   = 0;
-    while ((result == nil) && (index < kMaxCommandQueues))
+    NSUInteger  count   = [_commandQueueCache count];
+    while ((result == nil) && (index < count))
     {
         NSMutableDictionary*    nextCommandQueue    = [_commandQueueCache objectAtIndex:index];
         NSNumber*               inUse               = [nextCommandQueue objectForKey:kKey_InUse];
@@ -123,6 +124,22 @@ static MetalDeviceCache*   gDeviceCache    = nil;
         }
         index++;
     }
+    
+    // If we didn't find a free queue, create a new one
+    if (result == nil)
+    {
+        NSMutableDictionary*   commandDict = [NSMutableDictionary dictionary];
+        [commandDict setObject:[NSNumber numberWithBool:YES]
+                        forKey:kKey_InUse];
+        
+        id<MTLCommandQueue> commandQueue    = [_gpuDevice newCommandQueue];
+        [commandDict setObject:commandQueue
+                        forKey:kKey_CommandQueue];
+        
+        [_commandQueueCache addObject:commandDict];
+        result = commandQueue;
+    }
+    
     [_commandQueueCacheLock unlock];
     
     return result;
@@ -134,7 +151,8 @@ static MetalDeviceCache*   gDeviceCache    = nil;
     
     BOOL        found   = false;
     NSUInteger  index   = 0;
-    while ((!found) && (index < kMaxCommandQueues))
+    NSUInteger  count   = [_commandQueueCache count];
+    while ((!found) && (index < count))
     {
         NSMutableDictionary*    nextCommandQueuDict = [_commandQueueCache objectAtIndex:index];
         id<MTLCommandQueue>     nextCommandQueue    = [nextCommandQueuDict objectForKey:kKey_CommandQueue];
@@ -154,7 +172,8 @@ static MetalDeviceCache*   gDeviceCache    = nil;
 {
     BOOL        found   = NO;
     NSUInteger  index   = 0;
-    while ((!found) && (index < kMaxCommandQueues))
+    NSUInteger  count   = [_commandQueueCache count];
+    while ((!found) && (index < count))
     {
         NSMutableDictionary*    nextCommandQueuDict = [_commandQueueCache objectAtIndex:index];
         id<MTLCommandQueue>     nextCommandQueue    = [nextCommandQueuDict objectForKey:kKey_CommandQueue];

@@ -72,7 +72,6 @@
 				Plugin/main.m,
 				Plugin/MetalDeviceCache.m,
 				Plugin/TileableRemoteBrightness.metal,
-				"Wrapper Application/Info.plist",
 			);
 			target = BC2C64372ED160C900EC4E0B /* Wrapper Application */;
 		};
@@ -84,7 +83,6 @@
 				"/Localized: Wrapper Application/MainMenu.xib",
 				Plugin/Info.plist,
 				"Wrapper Application/AppDelegate.m",
-				"Wrapper Application/Info.plist",
 				"Wrapper Application/main.m",
 			);
 			target = BC2C64422ED160C900EC4E0B /* XPC Service */;
@@ -380,6 +378,7 @@
 		BC2C647E2ED160C900EC4E0B /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = /Frameworks/BezierKit;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = "BezierKit/Wrapper Application/SandboxEntitlements.entitlements";
 				CODE_SIGN_STYLE = Automatic;
@@ -396,6 +395,7 @@
 		BC2C647F2ED160C900EC4E0B /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = /Frameworks/BezierKit;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = "BezierKit/Wrapper Application/SandboxEntitlements.entitlements";
 				CODE_SIGN_STYLE = Automatic;
