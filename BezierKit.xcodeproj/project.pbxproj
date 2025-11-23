@@ -380,7 +380,7 @@
 		BC2C647E2ED160C900EC4E0B /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = "BezierKit/Wrapper Application/SandboxEntitlements.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				ENABLE_HARDENED_RUNTIME = NO;
@@ -396,7 +396,7 @@
 		BC2C647F2ED160C900EC4E0B /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = "BezierKit/Wrapper Application/SandboxEntitlements.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				ENABLE_HARDENED_RUNTIME = NO;
