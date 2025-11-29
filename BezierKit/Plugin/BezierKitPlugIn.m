@@ -446,18 +446,12 @@ static double applyEasing(int type, double t) {
                         atTime:(CMTime)renderTime
                          error:(NSError * _Nullable *)outError
 {
-    if ((pluginState == nil) || (sourceImages [ 0 ].ioSurface == nil) || (destinationImage.ioSurface == nil))
+    if ((pluginState == nil) || (sourceImages.count == 0) || (sourceImages[0].ioSurface == nil) || (destinationImage.ioSurface == nil))
     {
-        NSDictionary*   userInfo    = @{
-                                        NSLocalizedDescriptionKey : @"Invalid plugin state received from host"
-                                        };
-        if (outError != NULL)
-            *outError = [NSError errorWithDomain:FxPlugErrorDomain
-                                            code:kFxError_InvalidParameter
-                                        userInfo:userInfo];
         return NO;
     }
     
+    // 1. Retrieve State
     PluginState state;
     [pluginState getBytes:&state length:sizeof(state)];
     
@@ -470,98 +464,121 @@ static double applyEasing(int type, double t) {
     double currentRotation = state.startRotation + (state.endRotation - state.startRotation) * easedT;
     double currentOpacity = state.startOpacity + (state.endOpacity - state.startOpacity) * easedT;
     
-    double rotationRad = -currentRotation * M_PI / 180.0; // Negative to match expected rotation direction usually
+    double rotationRad = -currentRotation * M_PI / 180.0;
     double scaleFactor = currentScale / 100.0;
     float opacityFactor = (float)(currentOpacity / 100.0);
     
-    MetalDeviceCache*  deviceCache     = [MetalDeviceCache deviceCache];
+    // 2. Setup Metal
+    MetalDeviceCache* deviceCache     = [MetalDeviceCache deviceCache];
     MTLPixelFormat     pixelFormat     = [MetalDeviceCache MTLPixelFormatForImageTile:destinationImage];
     id<MTLCommandQueue> commandQueue   = [deviceCache commandQueueWithRegistryID:sourceImages[0].deviceRegistryID
                                                                      pixelFormat:pixelFormat];
-    if (commandQueue == nil)
-    {
-        return NO;
-    }
+    if (commandQueue == nil) return NO;
     
-    id<MTLCommandBuffer>    commandBuffer   = [commandQueue commandBuffer];
-    commandBuffer.label = @"DynamicRegXPC Command Buffer";
+    id<MTLCommandBuffer> commandBuffer = [commandQueue commandBuffer];
+    commandBuffer.label = @"BezierKit Render";
     [commandBuffer enqueue];
     
-    id<MTLTexture>  inputTexture    = [sourceImages[0] metalTextureForDevice:[deviceCache deviceWithRegistryID:sourceImages[0].deviceRegistryID]];
-    id<MTLTexture>  outputTexture   = [destinationImage metalTextureForDevice:[deviceCache deviceWithRegistryID:destinationImage.deviceRegistryID]];
+    id<MTLTexture> inputTexture = [sourceImages[0] metalTextureForDevice:[deviceCache deviceWithRegistryID:sourceImages[0].deviceRegistryID]];
+    id<MTLTexture> outputTexture = [destinationImage metalTextureForDevice:[deviceCache deviceWithRegistryID:destinationImage.deviceRegistryID]];
     
-    MTLRenderPassColorAttachmentDescriptor* colorAttachmentDescriptor   = [[MTLRenderPassColorAttachmentDescriptor alloc] init];
-    colorAttachmentDescriptor.texture = outputTexture;
-    colorAttachmentDescriptor.clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 0.0); // Clear to transparent
-    colorAttachmentDescriptor.loadAction = MTLLoadActionClear;
-    MTLRenderPassDescriptor*    renderPassDescriptor    = [MTLRenderPassDescriptor renderPassDescriptor];
-    renderPassDescriptor.colorAttachments [ 0 ] = colorAttachmentDescriptor;
-    id<MTLRenderCommandEncoder>   commandEncoder  = [commandBuffer renderCommandEncoderWithDescriptor:renderPassDescriptor];
+    MTLRenderPassColorAttachmentDescriptor* colorAttachment = [[MTLRenderPassColorAttachmentDescriptor alloc] init];
+    colorAttachment.texture = outputTexture;
+    colorAttachment.clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 0.0);
+    colorAttachment.loadAction = MTLLoadActionClear;
+    colorAttachment.storeAction = MTLStoreActionStore; // Important: Ensure we store the result
     
-    // Rendering
-    float   outputWidth     = (float)(destinationImage.tilePixelBounds.right - destinationImage.tilePixelBounds.left);
-    float   outputHeight    = (float)(destinationImage.tilePixelBounds.top - destinationImage.tilePixelBounds.bottom);
+    MTLRenderPassDescriptor* renderPassDescriptor = [MTLRenderPassDescriptor renderPassDescriptor];
+    renderPassDescriptor.colorAttachments[0] = colorAttachment;
     
-    float halfW = outputWidth / 2.0;
-    float halfH = outputHeight / 2.0;
+    id<MTLRenderCommandEncoder> commandEncoder = [commandBuffer renderCommandEncoderWithDescriptor:renderPassDescriptor];
+    
+    // 3. Coordinate System Logic (THE FIX)
+    
+    // Calculate Dest Tile Center (Global Coordinates)
+    float destCX = (float)(destinationImage.tilePixelBounds.left + destinationImage.tilePixelBounds.right) / 2.0f;
+    float destCY = (float)(destinationImage.tilePixelBounds.bottom + destinationImage.tilePixelBounds.top) / 2.0f;
+    
+    // Get Source TILE Bounds (Global Coordinates) - this is what we actually have in the texture
+    FxRect srcTileRect = sourceImages[0].tilePixelBounds;
+    float srcTileL = (float)srcTileRect.left;
+    float srcTileR = (float)srcTileRect.right;
+    float srcTileB = (float)srcTileRect.bottom;
+    float srcTileT = (float)srcTileRect.top;
+    
+    // Source tile dimensions (for texture coordinate calculation)
+    float srcTileWidth = srcTileR - srcTileL;
+    float srcTileHeight = srcTileT - srcTileB;
     
     float cosR = cos(rotationRad);
     float sinR = sin(rotationRad);
     
-    vector_float2 (^transform)(float, float) = ^(float x, float y) {
+    // Transform Block: Maps Global Source Point -> Global Dest Point
+    // Rotation is around the global origin (0,0), which corresponds to image center in FxPlug effects.
+    vector_float2 (^globalTransform)(float, float) = ^(float x, float y) {
+        // Scale and Rotate
         float sx = x * scaleFactor;
         float sy = y * scaleFactor;
         float rx = sx * cosR - sy * sinR;
         float ry = sx * sinR + sy * cosR;
-        return (vector_float2){ (float)rx, (float)ry };
+        // Translate
+        return (vector_float2){ (float)(rx + currentPosX), (float)(ry + currentPosY) };
     };
     
-    Vertex2D    vertices[4];
-    // BR
-    vertices[0].position = transform(halfW, -halfH);
-    vertices[0].textureCoordinate = (vector_float2){ 1.0, 1.0 };
-    // BL
-    vertices[1].position = transform(-halfW, -halfH);
-    vertices[1].textureCoordinate = (vector_float2){ 0.0, 1.0 };
-    // TR
-    vertices[2].position = transform(halfW, halfH);
-    vertices[2].textureCoordinate = (vector_float2){ 1.0, 0.0 };
-    // TL
-    vertices[3].position = transform(-halfW, halfH);
-    vertices[3].textureCoordinate = (vector_float2){ 0.0, 0.0 };
-    
-    MTLViewport viewport    = {
-        0, 0, outputWidth, outputHeight, -1.0, 1.0
+    // Calculate texture coordinate for a global source point
+    // The texture covers srcTileRect, so we need to map global coords to 0-1 range
+    vector_float2 (^texCoordForPoint)(float, float) = ^(float x, float y) {
+        float u = (x - srcTileL) / srcTileWidth;
+        float v = 1.0f - (y - srcTileB) / srcTileHeight; // Flip Y for Metal texture coordinates
+        return (vector_float2){ u, v };
     };
+    
+    Vertex2D vertices[4];
+    
+    // Calculate corners in Global Space, then subtract Dest Tile Center to get Viewport Space
+    // Use source TILE bounds for both geometry and texture coordinates
+    
+    // Bottom-Right
+    vector_float2 pBR = globalTransform(srcTileR, srcTileB);
+    vertices[0].position = (vector_float2){ pBR.x - destCX, pBR.y - destCY };
+    vertices[0].textureCoordinate = texCoordForPoint(srcTileR, srcTileB);
+    
+    // Bottom-Left
+    vector_float2 pBL = globalTransform(srcTileL, srcTileB);
+    vertices[1].position = (vector_float2){ pBL.x - destCX, pBL.y - destCY };
+    vertices[1].textureCoordinate = texCoordForPoint(srcTileL, srcTileB);
+    
+    // Top-Right
+    vector_float2 pTR = globalTransform(srcTileR, srcTileT);
+    vertices[2].position = (vector_float2){ pTR.x - destCX, pTR.y - destCY };
+    vertices[2].textureCoordinate = texCoordForPoint(srcTileR, srcTileT);
+    
+    // Top-Left
+    vector_float2 pTL = globalTransform(srcTileL, srcTileT);
+    vertices[3].position = (vector_float2){ pTL.x - destCX, pTL.y - destCY };
+    vertices[3].textureCoordinate = texCoordForPoint(srcTileL, srcTileT);
+    
+    // Viewport is size of the output tile
+    float outputWidth = (float)(destinationImage.tilePixelBounds.right - destinationImage.tilePixelBounds.left);
+    float outputHeight = (float)(destinationImage.tilePixelBounds.top - destinationImage.tilePixelBounds.bottom);
+    
+    MTLViewport viewport = { 0, 0, outputWidth, outputHeight, -1.0, 1.0 };
     [commandEncoder setViewport:viewport];
     
-    id<MTLRenderPipelineState>  pipelineState  = [deviceCache pipelineStateWithRegistryID:sourceImages[0].deviceRegistryID
-                                                                              pixelFormat:pixelFormat];
+    // Pipeline Setup
+    id<MTLRenderPipelineState> pipelineState = [deviceCache pipelineStateWithRegistryID:sourceImages[0].deviceRegistryID
+                                                                            pixelFormat:pixelFormat];
     [commandEncoder setRenderPipelineState:pipelineState];
     
-    [commandEncoder setVertexBytes:vertices
-                            length:sizeof(vertices)
-                           atIndex:BVI_Vertices];
+    [commandEncoder setVertexBytes:vertices length:sizeof(vertices) atIndex:BVI_Vertices];
     
-    simd_uint2  viewportSize = {
-        (unsigned int)(outputWidth),
-        (unsigned int)(outputHeight)
-    };
-    [commandEncoder setVertexBytes:&viewportSize
-                            length:sizeof(viewportSize)
-                           atIndex:BVI_ViewportSize];
+    simd_uint2 viewportSize = { (unsigned int)outputWidth, (unsigned int)outputHeight };
+    [commandEncoder setVertexBytes:&viewportSize length:sizeof(viewportSize) atIndex:BVI_ViewportSize];
     
-    [commandEncoder setFragmentTexture:inputTexture
-                               atIndex:BTI_InputImage];
+    [commandEncoder setFragmentTexture:inputTexture atIndex:BTI_InputImage];
+    [commandEncoder setFragmentBytes:&opacityFactor length:sizeof(opacityFactor) atIndex:BFI_Opacity];
     
-    [commandEncoder setFragmentBytes:&opacityFactor
-                              length:sizeof(opacityFactor)
-                             atIndex:BFI_Opacity];
-    
-    [commandEncoder drawPrimitives:MTLPrimitiveTypeTriangleStrip
-                       vertexStart:0
-                       vertexCount:4];
-    
+    [commandEncoder drawPrimitives:MTLPrimitiveTypeTriangleStrip vertexStart:0 vertexCount:4];
     [commandEncoder endEncoding];
     
     [commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> buffer) {
@@ -569,11 +586,9 @@ static double applyEasing(int type, double t) {
     }];
     
     [commandBuffer commit];
-    
-    [colorAttachmentDescriptor release];
+    [colorAttachment release];
     
     return YES;
-    
 }
 
 @end
