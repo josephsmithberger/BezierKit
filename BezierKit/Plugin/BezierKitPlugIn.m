@@ -246,41 +246,39 @@ static double applyEasing(int type, double t);
     double cosR = cos(rotationRad);
     double sinR = sin(rotationRad);
     
+    // Get the source image bounds and calculate center
     FxRect srcRect = sourceImages[0].imagePixelBounds;
-    double width = srcRect.right - srcRect.left;
-    double height = srcRect.top - srcRect.bottom;
-    double cx = srcRect.left + width / 2.0;
-    double cy = srcRect.bottom + height / 2.0;
+    double centerX = (srcRect.left + srcRect.right) / 2.0;
+    double centerY = (srcRect.bottom + srcRect.top) / 2.0;
     
-    double halfW = width / 2.0;
-    double halfH = height / 2.0;
-    
-    // 4 corners relative to center
+    // 4 corners in GLOBAL coordinates
     struct Point { double x, y; };
     struct Point corners[4] = {
-        {-halfW, -halfH},
-        {halfW, -halfH},
-        {halfW, halfH},
-        {-halfW, halfH}
+        {srcRect.left, srcRect.bottom},   // Bottom-Left
+        {srcRect.right, srcRect.bottom},  // Bottom-Right
+        {srcRect.right, srcRect.top},     // Top-Right
+        {srcRect.left, srcRect.top}       // Top-Left
     };
     
     double minX = 1e15, minY = 1e15, maxX = -1e15, maxY = -1e15;
     
     for (int i=0; i<4; i++) {
-        double x = corners[i].x;
-        double y = corners[i].y;
+        // Transform around IMAGE CENTER:
+        // 1. Translate to center
+        double x = corners[i].x - centerX;
+        double y = corners[i].y - centerY;
         
-        // Scale
+        // 2. Scale
         double sx = x * scaleFactor;
         double sy = y * scaleFactor;
         
-        // Rotate
+        // 3. Rotate
         double rx = sx * cosR - sy * sinR;
         double ry = sx * sinR + sy * cosR;
         
-        // Translate (add currentPos) and add back center
-        double finalX = rx + currentPosX + cx;
-        double finalY = ry + currentPosY + cy;
+        // 4. Translate back from center, then apply position offset
+        double finalX = rx + centerX + currentPosX;
+        double finalY = ry + centerY + currentPosY;
         
         if (finalX < minX) minX = finalX;
         if (finalX > maxX) maxX = finalX;
@@ -325,22 +323,23 @@ static double applyEasing(int type, double t);
     double currentScale = state.startScale + (state.endScale - state.startScale) * easedT;
     double currentRotation = state.startRotation + (state.endRotation - state.startRotation) * easedT;
     
-    // Inverse transform:
-    // v = ScaleInv(RotateInv(v' - Pos))
+    // Get source image center for center-based transforms
+    FxRect srcImgRect = sourceImages[0].imagePixelBounds;
+    double centerX = (srcImgRect.left + srcImgRect.right) / 2.0;
+    double centerY = (srcImgRect.bottom + srcImgRect.top) / 2.0;
     
+    // Inverse transform (to map destination points back to source)
     double scaleFactor = currentScale / 100.0;
     if (scaleFactor < 0.001) scaleFactor = 0.001;
     double invScale = 1.0 / scaleFactor;
     
-    // In renderDestinationImage, we used rotationRad = -currentRotation * ...
-    // So we rotated by -currentRotation.
-    // Inverse rotation is +currentRotation.
+    // Forward rotation was -currentRotation, so inverse is +currentRotation
     double rotRad = currentRotation * M_PI / 180.0;
     
     double cosR = cos(rotRad);
     double sinR = sin(rotRad);
     
-    // Destination corners
+    // Destination tile corners
     double l = destinationTileRect.left;
     double r = destinationTileRect.right;
     double b = destinationTileRect.bottom;
@@ -352,22 +351,33 @@ static double applyEasing(int type, double t);
     double minX = 1e15, minY = 1e15, maxX = -1e15, maxY = -1e15;
     
     for (int i=0; i<4; i++) {
-        // Translate
-        double x = corners[i].x - currentPosX;
-        double y = corners[i].y - currentPosY;
+        // Inverse of: (P - center) * scale * rotate + center + position
+        // So: ((P - position) - center) * invRotate * invScale + center
         
-        // Rotate
+        // 1. Undo position offset
+        double px = corners[i].x - currentPosX;
+        double py = corners[i].y - currentPosY;
+        
+        // 2. Translate to center-relative coords
+        double x = px - centerX;
+        double y = py - centerY;
+        
+        // 3. Undo rotation (rotate by +angle to undo -angle rotation)
         double rx = x * cosR - y * sinR;
         double ry = x * sinR + y * cosR;
         
-        // Scale
+        // 4. Undo scale
         double sx = rx * invScale;
         double sy = ry * invScale;
         
-        if (sx < minX) minX = sx;
-        if (sx > maxX) maxX = sx;
-        if (sy < minY) minY = sy;
-        if (sy > maxY) maxY = sy;
+        // 5. Translate back to global coords
+        double srcX = sx + centerX;
+        double srcY = sy + centerY;
+        
+        if (srcX < minX) minX = srcX;
+        if (srcX > maxX) maxX = srcX;
+        if (srcY < minY) minY = srcY;
+        if (srcY > maxY) maxY = srcY;
     }
     
     sourceTileRect->left = (int)floor(minX);
@@ -458,21 +468,36 @@ static double applyEasing(int type, double t) {
     double t = state.progress / 100.0;
     double easedT = applyEasing(state.easingType, t);
     
+    // Calculate current transform values
     double currentPosX = state.startPosX + (state.endPosX - state.startPosX) * easedT;
     double currentPosY = state.startPosY + (state.endPosY - state.startPosY) * easedT;
     double currentScale = state.startScale + (state.endScale - state.startScale) * easedT;
     double currentRotation = state.startRotation + (state.endRotation - state.startRotation) * easedT;
     double currentOpacity = state.startOpacity + (state.endOpacity - state.startOpacity) * easedT;
     
-    double rotationRad = -currentRotation * M_PI / 180.0;
+    // Prepare constants
+    double rotationRad = -currentRotation * M_PI / 180.0; // Rotation for the transform
     double scaleFactor = currentScale / 100.0;
+    if (scaleFactor < 0.0001) scaleFactor = 0.0001; // Avoid divide by zero
     float opacityFactor = (float)(currentOpacity / 100.0);
     
+    // Get the FULL source image bounds to find the center (pivot point)
+    FxRect srcImgRect = sourceImages[0].imagePixelBounds;
+    float centerX = (float)(srcImgRect.left + srcImgRect.right) / 2.0f;
+    float centerY = (float)(srcImgRect.bottom + srcImgRect.top) / 2.0f;
+    
+    // Inverse constants for mapping Dest -> Source
+    double invScale = 1.0 / scaleFactor;
+    // Forward rotation was -currentRotation, so inverse is +currentRotation
+    double invRotRad = currentRotation * M_PI / 180.0;
+    float cosInv = (float)cos(invRotRad);
+    float sinInv = (float)sin(invRotRad);
+
     // 2. Setup Metal
-    MetalDeviceCache* deviceCache     = [MetalDeviceCache deviceCache];
-    MTLPixelFormat     pixelFormat     = [MetalDeviceCache MTLPixelFormatForImageTile:destinationImage];
-    id<MTLCommandQueue> commandQueue   = [deviceCache commandQueueWithRegistryID:sourceImages[0].deviceRegistryID
-                                                                     pixelFormat:pixelFormat];
+    MetalDeviceCache* deviceCache = [MetalDeviceCache deviceCache];
+    MTLPixelFormat pixelFormat = [MetalDeviceCache MTLPixelFormatForImageTile:destinationImage];
+    id<MTLCommandQueue> commandQueue = [deviceCache commandQueueWithRegistryID:sourceImages[0].deviceRegistryID
+                                                                   pixelFormat:pixelFormat];
     if (commandQueue == nil) return NO;
     
     id<MTLCommandBuffer> commandBuffer = [commandQueue commandBuffer];
@@ -486,86 +511,99 @@ static double applyEasing(int type, double t) {
     colorAttachment.texture = outputTexture;
     colorAttachment.clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 0.0);
     colorAttachment.loadAction = MTLLoadActionClear;
-    colorAttachment.storeAction = MTLStoreActionStore; // Important: Ensure we store the result
+    colorAttachment.storeAction = MTLStoreActionStore;
     
     MTLRenderPassDescriptor* renderPassDescriptor = [MTLRenderPassDescriptor renderPassDescriptor];
     renderPassDescriptor.colorAttachments[0] = colorAttachment;
     
     id<MTLRenderCommandEncoder> commandEncoder = [commandBuffer renderCommandEncoderWithDescriptor:renderPassDescriptor];
     
-    // 3. Coordinate System Logic (THE FIX)
+    // 3. Geometry Calculation
     
-    // Calculate Dest Tile Center (Global Coordinates)
-    float destCX = (float)(destinationImage.tilePixelBounds.left + destinationImage.tilePixelBounds.right) / 2.0f;
-    float destCY = (float)(destinationImage.tilePixelBounds.bottom + destinationImage.tilePixelBounds.top) / 2.0f;
-    
-    // Get Source TILE Bounds (Global Coordinates) - this is what we actually have in the texture
-    FxRect srcTileRect = sourceImages[0].tilePixelBounds;
-    float srcTileL = (float)srcTileRect.left;
-    float srcTileR = (float)srcTileRect.right;
-    float srcTileB = (float)srcTileRect.bottom;
-    float srcTileT = (float)srcTileRect.top;
-    
-    // Source tile dimensions (for texture coordinate calculation)
-    float srcTileWidth = srcTileR - srcTileL;
-    float srcTileHeight = srcTileT - srcTileB;
-    
-    float cosR = cos(rotationRad);
-    float sinR = sin(rotationRad);
-    
-    // Transform Block: Maps Global Source Point -> Global Dest Point
-    // Rotation is around the global origin (0,0), which corresponds to image center in FxPlug effects.
-    vector_float2 (^globalTransform)(float, float) = ^(float x, float y) {
-        // Scale and Rotate
-        float sx = x * scaleFactor;
-        float sy = y * scaleFactor;
-        float rx = sx * cosR - sy * sinR;
-        float ry = sx * sinR + sy * cosR;
-        // Translate
-        return (vector_float2){ (float)(rx + currentPosX), (float)(ry + currentPosY) };
-    };
-    
-    // Calculate texture coordinate for a global source point
-    // The texture covers srcTileRect, so we need to map global coords to 0-1 range
-    vector_float2 (^texCoordForPoint)(float, float) = ^(float x, float y) {
-        float u = (x - srcTileL) / srcTileWidth;
-        float v = 1.0f - (y - srcTileB) / srcTileHeight; // Flip Y for Metal texture coordinates
-        return (vector_float2){ u, v };
-    };
-    
-    Vertex2D vertices[4];
-    
-    // Calculate corners in Global Space, then subtract Dest Tile Center to get Viewport Space
-    // Use source TILE bounds for both geometry and texture coordinates
-    
-    // Bottom-Right
-    vector_float2 pBR = globalTransform(srcTileR, srcTileB);
-    vertices[0].position = (vector_float2){ pBR.x - destCX, pBR.y - destCY };
-    vertices[0].textureCoordinate = texCoordForPoint(srcTileR, srcTileB);
-    
-    // Bottom-Left
-    vector_float2 pBL = globalTransform(srcTileL, srcTileB);
-    vertices[1].position = (vector_float2){ pBL.x - destCX, pBL.y - destCY };
-    vertices[1].textureCoordinate = texCoordForPoint(srcTileL, srcTileB);
-    
-    // Top-Right
-    vector_float2 pTR = globalTransform(srcTileR, srcTileT);
-    vertices[2].position = (vector_float2){ pTR.x - destCX, pTR.y - destCY };
-    vertices[2].textureCoordinate = texCoordForPoint(srcTileR, srcTileT);
-    
-    // Top-Left
-    vector_float2 pTL = globalTransform(srcTileL, srcTileT);
-    vertices[3].position = (vector_float2){ pTL.x - destCX, pTL.y - destCY };
-    vertices[3].textureCoordinate = texCoordForPoint(srcTileL, srcTileT);
-    
-    // Viewport is size of the output tile
+    // Output Tile Geometry (Viewport)
+    // We draw a quad that exactly fills the destination tile.
     float outputWidth = (float)(destinationImage.tilePixelBounds.right - destinationImage.tilePixelBounds.left);
     float outputHeight = (float)(destinationImage.tilePixelBounds.top - destinationImage.tilePixelBounds.bottom);
+    float halfW = outputWidth / 2.0f;
+    float halfH = outputHeight / 2.0f;
+
+    // Source Texture Geometry (for UV normalization)
+    // Use tilePixelBounds since that's what we actually have in the texture
+    FxRect srcRect = sourceImages[0].tilePixelBounds;
+    float srcL = (float)srcRect.left;
+    float srcT = (float)srcRect.top;
+    float srcB = (float)srcRect.bottom;
+    float srcW = (float)(srcRect.right - srcRect.left);
+    float srcH = (float)(srcRect.top - srcRect.bottom);
     
+    // Dest Tile Bounds in Global Coordinates
+    float dLeft = (float)destinationImage.tilePixelBounds.left;
+    float dRight = (float)destinationImage.tilePixelBounds.right;
+    float dBottom = (float)destinationImage.tilePixelBounds.bottom;
+    float dTop = (float)destinationImage.tilePixelBounds.top;
+    
+    // Define corners of the Dest Tile in Global Space
+    struct Point { float x, y; };
+    struct Point destCorners[4];
+    
+    // Positions (Local to Tile Center) - vertices stay FIXED to fill the destination tile
+    Vertex2D vertices[4];
+    
+    // Vertex 0: Top-Left
+    vertices[0].position = (vector_float2){ -halfW, halfH }; 
+    destCorners[0] = (struct Point){ dLeft, dTop };
+    
+    // Vertex 1: Bottom-Left
+    vertices[1].position = (vector_float2){ -halfW, -halfH };
+    destCorners[1] = (struct Point){ dLeft, dBottom };
+
+    // Vertex 2: Top-Right
+    vertices[2].position = (vector_float2){ halfW, halfH };
+    destCorners[2] = (struct Point){ dRight, dTop };
+
+    // Vertex 3: Bottom-Right
+    vertices[3].position = (vector_float2){ halfW, -halfH };
+    destCorners[3] = (struct Point){ dRight, dBottom };
+    
+    // 4. Calculate UVs via Inverse Transform (around image center)
+    // For each destination corner, find what source pixel maps there
+    for (int i = 0; i < 4; i++) {
+        // Inverse of: (P - center) * scale * rotate + center + position
+        // So: ((P - position) - center) * invRotate * invScale + center
+        
+        // 1. Undo position offset
+        float px = destCorners[i].x - (float)currentPosX;
+        float py = destCorners[i].y - (float)currentPosY;
+        
+        // 2. Translate to center-relative coords
+        float x = px - centerX;
+        float y = py - centerY;
+        
+        // 3. Undo Rotation
+        float rx = x * cosInv - y * sinInv;
+        float ry = x * sinInv + y * cosInv;
+        
+        // 4. Undo Scale
+        float sx = rx * (float)invScale;
+        float sy = ry * (float)invScale;
+        
+        // 5. Translate back to global source coords
+        float srcX = sx + centerX;
+        float srcY = sy + centerY;
+        
+        // Map global source coords to 0..1 based on the source TILE bounds
+        float u = (srcX - srcL) / srcW;
+        
+        // V: Flip Y for Metal Texture (0 is Top)
+        float v = (srcT - srcY) / srcH; 
+        
+        vertices[i].textureCoordinate = (vector_float2){ u, v };
+    }
+    
+    // 5. Submit to GPU
     MTLViewport viewport = { 0, 0, outputWidth, outputHeight, -1.0, 1.0 };
     [commandEncoder setViewport:viewport];
     
-    // Pipeline Setup
     id<MTLRenderPipelineState> pipelineState = [deviceCache pipelineStateWithRegistryID:sourceImages[0].deviceRegistryID
                                                                             pixelFormat:pixelFormat];
     [commandEncoder setRenderPipelineState:pipelineState];
