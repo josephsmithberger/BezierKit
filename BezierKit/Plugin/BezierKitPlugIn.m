@@ -89,7 +89,7 @@ static double applyEasing(int type, double t);
 {
     *properties = @{
                     kFxPropertyKey_MayRemapTime : [NSNumber numberWithBool:NO],
-                    kFxPropertyKey_PixelTransformSupport : [NSNumber numberWithInt:kFxPixelTransform_ScaleTranslate],
+                    kFxPropertyKey_PixelTransformSupport : [NSNumber numberWithInt:kFxPixelTransform_Full],
                     kFxPropertyKey_VariesWhenParamsAreStatic : [NSNumber numberWithBool:NO]
                     };
     
@@ -246,7 +246,9 @@ static double applyEasing(int type, double t);
     double cosR = cos(rotationRad);
     double sinR = sin(rotationRad);
     
-    FxRect srcRect = sourceImages[0].imagePixelBounds;
+    // IMPORTANT: Use destination full-image bounds for a stable coordinate system.
+    // Using per-tile bounds here causes the pivot/rotation center to shift as tiling changes.
+    FxRect srcRect = destinationImage.imagePixelBounds;
     double width = srcRect.right - srcRect.left;
     double height = srcRect.top - srcRect.bottom;
     double cx = srcRect.left + width / 2.0;
@@ -288,10 +290,12 @@ static double applyEasing(int type, double t);
         if (finalY > maxY) maxY = finalY;
     }
     
-    destinationImageRect->left = (int)floor(minX);
-    destinationImageRect->right = (int)ceil(maxX);
-    destinationImageRect->bottom = (int)floor(minY);
-    destinationImageRect->top = (int)ceil(maxY);
+    // Add padding to prevent edge clipping/tiling artifacts
+    double padding = 2.0;
+    destinationImageRect->left = (int)floor(minX - padding);
+    destinationImageRect->right = (int)ceil(maxX + padding);
+    destinationImageRect->bottom = (int)floor(minY - padding);
+    destinationImageRect->top = (int)ceil(maxY + padding);
     
     return YES;
 }
@@ -339,8 +343,8 @@ static double applyEasing(int type, double t);
     double cosR = cos(rotRad);
     double sinR = sin(rotRad);
     
-    // Calculate Center from source image bounds
-    FxRect srcRect = sourceImages[0].imagePixelBounds;
+    // Calculate Center from destination full-image bounds (stable across tiles)
+    FxRect srcRect = destinationImage.imagePixelBounds;
     double width = srcRect.right - srcRect.left;
     double height = srcRect.top - srcRect.bottom;
     double cx = srcRect.left + width / 2.0;
@@ -380,10 +384,12 @@ static double applyEasing(int type, double t);
         if (finalY > maxY) maxY = finalY;
     }
     
-    sourceTileRect->left = (int)floor(minX);
-    sourceTileRect->right = (int)ceil(maxX);
-    sourceTileRect->bottom = (int)floor(minY);
-    sourceTileRect->top = (int)ceil(maxY);
+    // Add padding for bilinear filtering and to prevent edge artifacts
+    double padding = 2.0;
+    sourceTileRect->left = (int)floor(minX - padding);
+    sourceTileRect->right = (int)ceil(maxX + padding);
+    sourceTileRect->bottom = (int)floor(minY - padding);
+    sourceTileRect->top = (int)ceil(maxY + padding);
     
     return YES;
 }
@@ -516,8 +522,8 @@ static double applyEasing(int type, double t) {
     float srcTileB = (float)srcTileRect.bottom;
     float srcTileT = (float)srcTileRect.top;
     
-    // Get Source IMAGE Bounds (for Pivot Point)
-    FxRect srcFullRect = sourceImages[0].imagePixelBounds;
+    // Get FULL IMAGE bounds (for Pivot Point). Must be stable across tiles.
+    FxRect srcFullRect = destinationImage.imagePixelBounds;
     float cx = (float)(srcFullRect.left + srcFullRect.right) / 2.0f;
     float cy = (float)(srcFullRect.bottom + srcFullRect.top) / 2.0f;
     
