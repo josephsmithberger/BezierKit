@@ -313,6 +313,7 @@ static double applyEasing(int type, double t);
                  error:(NSError * _Nullable *)outError
 {
     if (pluginState == nil) return NO;
+    if (sourceImages.count < 1) return NO;
     
     PluginState state;
     [pluginState getBytes:&state length:sizeof(state)];
@@ -326,19 +327,24 @@ static double applyEasing(int type, double t);
     double currentRotation = state.startRotation + (state.endRotation - state.startRotation) * easedT;
     
     // Inverse transform:
-    // v = ScaleInv(RotateInv(v' - Pos))
+    // v_src = ScaleInv(RotateInv(v_dst - Translation - Center)) + Center
     
     double scaleFactor = currentScale / 100.0;
     if (scaleFactor < 0.001) scaleFactor = 0.001;
     double invScale = 1.0 / scaleFactor;
     
-    // In renderDestinationImage, we used rotationRad = -currentRotation * ...
-    // So we rotated by -currentRotation.
     // Inverse rotation is +currentRotation.
     double rotRad = currentRotation * M_PI / 180.0;
     
     double cosR = cos(rotRad);
     double sinR = sin(rotRad);
+    
+    // Calculate Center from source image bounds
+    FxRect srcRect = sourceImages[0].imagePixelBounds;
+    double width = srcRect.right - srcRect.left;
+    double height = srcRect.top - srcRect.bottom;
+    double cx = srcRect.left + width / 2.0;
+    double cy = srcRect.bottom + height / 2.0;
     
     // Destination corners
     double l = destinationTileRect.left;
@@ -352,9 +358,9 @@ static double applyEasing(int type, double t);
     double minX = 1e15, minY = 1e15, maxX = -1e15, maxY = -1e15;
     
     for (int i=0; i<4; i++) {
-        // Translate
-        double x = corners[i].x - currentPosX;
-        double y = corners[i].y - currentPosY;
+        // Translate (remove center and translation)
+        double x = corners[i].x - currentPosX - cx;
+        double y = corners[i].y - currentPosY - cy;
         
         // Rotate
         double rx = x * cosR - y * sinR;
@@ -364,10 +370,14 @@ static double applyEasing(int type, double t);
         double sx = rx * invScale;
         double sy = ry * invScale;
         
-        if (sx < minX) minX = sx;
-        if (sx > maxX) maxX = sx;
-        if (sy < minY) minY = sy;
-        if (sy > maxY) maxY = sy;
+        // Add center back
+        double finalX = sx + cx;
+        double finalY = sy + cy;
+        
+        if (finalX < minX) minX = finalX;
+        if (finalX > maxX) maxX = finalX;
+        if (finalY < minY) minY = finalY;
+        if (finalY > maxY) maxY = finalY;
     }
     
     sourceTileRect->left = (int)floor(minX);
@@ -506,6 +516,11 @@ static double applyEasing(int type, double t) {
     float srcTileB = (float)srcTileRect.bottom;
     float srcTileT = (float)srcTileRect.top;
     
+    // Get Source IMAGE Bounds (for Pivot Point)
+    FxRect srcFullRect = sourceImages[0].imagePixelBounds;
+    float cx = (float)(srcFullRect.left + srcFullRect.right) / 2.0f;
+    float cy = (float)(srcFullRect.bottom + srcFullRect.top) / 2.0f;
+    
     // Source tile dimensions (for texture coordinate calculation)
     float srcTileWidth = srcTileR - srcTileL;
     float srcTileHeight = srcTileT - srcTileB;
@@ -514,15 +529,21 @@ static double applyEasing(int type, double t) {
     float sinR = sin(rotationRad);
     
     // Transform Block: Maps Global Source Point -> Global Dest Point
-    // Rotation is around the global origin (0,0), which corresponds to image center in FxPlug effects.
+    // Logic: v_dst = Translation + GlobalRotation(Scale(v_src - Center)) + Center
     vector_float2 (^globalTransform)(float, float) = ^(float x, float y) {
+        // Move to local space
+        float dx = x - cx;
+        float dy = y - cy;
+        
         // Scale and Rotate
-        float sx = x * scaleFactor;
-        float sy = y * scaleFactor;
+        float sx = dx * scaleFactor;
+        float sy = dy * scaleFactor;
+        
         float rx = sx * cosR - sy * sinR;
         float ry = sx * sinR + sy * cosR;
-        // Translate
-        return (vector_float2){ (float)(rx + currentPosX), (float)(ry + currentPosY) };
+        
+        // Move back to global + Translate
+        return (vector_float2){ (float)(rx + cx + currentPosX), (float)(ry + cy + currentPosY) };
     };
     
     // Calculate texture coordinate for a global source point
@@ -536,7 +557,7 @@ static double applyEasing(int type, double t) {
     Vertex2D vertices[4];
     
     // Calculate corners in Global Space, then subtract Dest Tile Center to get Viewport Space
-    // Use source TILE bounds for both geometry and texture coordinates
+    // We iterate over the corners of the SOURCE TILE because that is the geometry we are drawing.
     
     // Bottom-Right
     vector_float2 pBR = globalTransform(srcTileR, srcTileB);
